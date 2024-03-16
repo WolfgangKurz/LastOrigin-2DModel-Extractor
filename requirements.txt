@@ -1,4 +1,5 @@
 numpy >= 1.24.2
+numpy-quaternion >= 2023.0.2
 UnityPy >= 1.10.7
 Pillow >= 10.0.0
 photoshop-python-api >= 0.22.4

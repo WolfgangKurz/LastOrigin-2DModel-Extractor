@@ -16,6 +16,7 @@ You should install program:
 
 You should install module:
 - numpy
+- numpy-quaternion
 - UnityPy
 - Pillow(PIL)
 - photoshop-python-api

@@ -371,24 +371,30 @@ def main(input: str) -> None:
                     temp_path = os.path.join(outDir, f"_temp_{temp_id}.png")
                     _sp.save(temp_path)
 
-                    # size of document, sprite
-                    _cx = document.width / 2
-                    _cy = document.height / 2
+                    # size of sprite
                     _w = sprite.m_Rect.width
                     _h = sprite.m_Rect.height
 
                     # expand canvas size at least sprite image size
                     if document.width < _w or document.height < _h:
-                        document.resizeCanvas(
-                            np.max([_w, document.width]),
-                            np.max([_h, document.height]),
-                            ps.AnchorPosition.MiddleCenter
-                        )
+                        #  NOTE: Cannot call resizeCanvas with PS2025 (maybe, at least mine)
+                        #  NOTE: So call JS, could be crash when working document is not active document
+                        ps.app.doJavaScript(f"app.activeDocument.resizeCanvas({int(_w)}, {int(_h)}, AnchorPosition.MIDDLECENTER)")
+                        ps.app.doJavaScript("app.runMenuItem(stringIDToTypeID('fitLayersOnScreen'));") # make zoom to fit document
+                        # document.resizeCanvas(
+                        #     np.max([_w, document.width]),
+                        #     np.max([_h, document.height]),
+                        #     ps.AnchorPosition.MiddleCenter
+                        # )
 
                     # load sprite image into photoshop
                     desc.putPath(ps.app.charIDToTypeID("null"), temp_path)
                     ps.app.executeAction(ps.app.charIDToTypeID("Plc "), desc)
                     os.unlink(temp_path)
+
+                    # size of document
+                    _cx = document.width / 2
+                    _cy = document.height / 2
 
                     # rename layer
                     layer: LayerSet = document.artLayers.getByIndex(0)
@@ -514,7 +520,7 @@ def main(input: str) -> None:
 
         if True:  # Change this to False if want to use currently opening document
             document = ps.app.documents.add(
-                4096, 4096,  # enough size?
+                256, 256,  # small size at first
                 name=inpCharName,
                 initialFill=ps.DocumentFill.Transparent
             )
@@ -564,8 +570,7 @@ def main(input: str) -> None:
                     _temp_layer.remove()
                     # layer.move(_grp, ps.ElementPlacement.PlaceInside)
 
-            # enough size? (make bigger when result has cropped)
-            document.resizeCanvas(8192, 8192, ps.AnchorPosition.MiddleCenter)
+            document.reveal_all()  # expand to all layers' bound
             document.trim(ps.TrimType.TransparentPixels)
 
             _basename = rootName

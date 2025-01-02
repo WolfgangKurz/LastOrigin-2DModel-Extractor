@@ -10,7 +10,7 @@ import numpy as np
 import quaternion
 
 from photoshop import Session
-from photoshop.api._document import Document, LayerSet
+from photoshop.api._document import Document, LayerSet, ArtLayer
 
 from matrix import Matrix3D
 from bcolors import bcolors
@@ -172,7 +172,7 @@ def main(input: str) -> None:
             name in listSwapActive or \
             name in listSwapInactive
 
-    def Process(ps: Session, document: Document, target, matrices: list[np.ndarray] = [], _list = [False, False, False, False]) -> None:
+    def Process(ps: Session, document: Document, documentFillLayer: ArtLayer, target, matrices: list[np.ndarray] = [], _list = [False, False, False, False]) -> None:
         nonlocal listParts, listBg
         nonlocal orderTable, passing, temp_id
 
@@ -364,6 +364,12 @@ def main(input: str) -> None:
                             _sp = Image.composite(_sp, _empty, _mask)
                         else:
                             _sp.putalpha(_mask)
+
+                        if sprite.m_PixelsToUnits != 100:
+                            _sp = _sp.resize(
+                                (int(_sp.width * 100 / sprite.m_PixelsToUnits), int(_sp.height * 100 / sprite.m_PixelsToUnits)),
+                                Image.LANCZOS
+                            )
                     #endregion
 
                     # save into file temporary to load from photoshop
@@ -372,20 +378,39 @@ def main(input: str) -> None:
                     _sp.save(temp_path)
 
                     # size of sprite
-                    _w = sprite.m_Rect.width
-                    _h = sprite.m_Rect.height
+                    _w = sprite.m_Rect.width * 100 / sprite.m_PixelsToUnits
+                    _h = sprite.m_Rect.height * 100 / sprite.m_PixelsToUnits
 
                     # expand canvas size at least sprite image size
-                    if document.width < _w or document.height < _h:
+                    if document.width < int(_w) or document.height < int(_h):
+                        __w = max(int(_w), document.width)
+                        __h = max(int(_h), document.height)
                         #  NOTE: Cannot call resizeCanvas with PS2025 (maybe, at least mine)
                         #  NOTE: So call JS, could be crash when working document is not active document
-                        ps.app.doJavaScript(f"app.activeDocument.resizeCanvas({int(_w)}, {int(_h)}, AnchorPosition.MIDDLECENTER)")
+                        ps.app.doJavaScript(f"app.activeDocument.resizeCanvas({__w}, {__h}, AnchorPosition.MIDDLECENTER)")
+
+                        # fill document-size layer to adjusting camera
+                        document.activeLayer = documentFillLayer
+                        document.selection.select(
+                            [
+                                [0, 0],
+                                [__w, 0],
+                                [__w, __h],
+                                [0, __h],
+                            ],
+                            ps.SelectionType.ReplaceSelection,
+                            0,
+                            False
+                        )
+                        _color = ps.SolidColor()
+                        _color.rgb.red = 0
+                        _color.rgb.green = 0
+                        _color.rgb.blue = 0
+                        document.selection.fill(_color)
+                        document.selection.deselect()
+
+                        #  NOTE: fitLayersOnScreen is not for document, for active layer
                         ps.app.doJavaScript("app.runMenuItem(stringIDToTypeID('fitLayersOnScreen'));") # make zoom to fit document
-                        # document.resizeCanvas(
-                        #     np.max([_w, document.width]),
-                        #     np.max([_h, document.height]),
-                        #     ps.AnchorPosition.MiddleCenter
-                        # )
 
                     # load sprite image into photoshop
                     desc.putPath(ps.app.charIDToTypeID("null"), temp_path)
@@ -510,7 +535,7 @@ def main(input: str) -> None:
 
         for c in target["childs"]:
             __list = [_list[0], _list[1], _list[2], _list[3]]
-            Process(ps, document, c, _matrices, __list)
+            Process(ps, document, documentFillLayer, c, _matrices, __list)
 
     rootName: str = root["text"]
     rootName = rootName.replace("_dam", "_Dam") # patch
@@ -528,7 +553,12 @@ def main(input: str) -> None:
             document = ps.active_document
 
         try:
-            Process(ps, document, root)
+            documentFillLayer = document.artLayers.add()
+            documentFillLayer.name = "#DocumentFillLayer"
+
+            Process(ps, document, documentFillLayer, root)
+            
+            documentFillLayer.remove()
             flatten_layers = sum(list(orderTable.values()), [])
 
             def _find_layer(name: str) -> LayerSet | None:
